@@ -13,16 +13,28 @@
 # DEVIATIONS from the house hardening block, all four load-bearing:
 #
 #   1. RestrictNamespaces is a permit-list rather than `yes`.
-#   2. SystemCallFilter adds @sandbox plus chroot/unshare/setns/pivot_root.
+#   2. SystemCallFilter is a denylist rather than the house `@system-service`
+#      allowlist.
 #
 #      Chrome's own sandbox is built from user, PID, network and mount
-#      namespaces plus seccomp-bpf. The house `RestrictNamespaces=yes` blocks
-#      exactly the calls it needs, and Chrome's response to being unable to
-#      build its sandbox is to refuse to start. The usual fix at that point is
-#      --no-sandbox, which is the wrong trade every time and especially here:
-#      it would remove the only boundary between a compromised renderer and
-#      this account. Widening the syscall filter keeps Chrome's sandbox and is
-#      strictly the safer of the two.
+#      namespaces plus seccomp-bpf, and it constructs that sandbox by mounting
+#      inside its private mount namespace. Any allowlist tight enough to be
+#      worth having kills it: @system-service excludes @mount, so the zygote
+#      cannot build the sandbox and dies with "Zygote process exited
+#      prematurely", and it excludes ptrace, which crashpad needs. Measured on
+#      this host, every allowlist variant failed and @mount was the specific
+#      cause.
+#
+#      Chrome's response to being unable to build its sandbox is to refuse to
+#      start, and the usual fix at that point is --no-sandbox. That is the
+#      wrong trade every time and especially here, since it would remove the
+#      only boundary between a compromised renderer and this account.
+#
+#      So the filter denies the dangerous families instead and lets Chrome's
+#      own seccomp-bpf do the fine-grained work inside each renderer, which is
+#      what it is for. The empty CapabilityBoundingSet below already makes
+#      module loading, reboot, swap and raw I/O fail with EPERM regardless, so
+#      the denylist is a second lock on those rather than the only one.
 #
 #   3. MemoryDenyWriteExecute is off. V8 makes written pages executable to run
 #      JIT-compiled JavaScript; with the house `yes`, Chrome does not start.
@@ -82,10 +94,11 @@ RemoveIPC=yes
 UMask=0077
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 
-# See deviations 1 and 2 above.
-RestrictNamespaces=user pid net mount ipc uts cgroup
-SystemCallFilter=@system-service @sandbox
-SystemCallFilter=chroot unshare setns pivot_root clone3
+# See deviations 1 and 2 above. The namespace names are systemd's own, so it is
+# `mnt` and not `mount`: an unrecognised entry makes systemd discard the whole
+# line with a warning, which silently leaves namespaces unrestricted.
+RestrictNamespaces=user pid net mnt ipc uts cgroup
+SystemCallFilter=~@module @reboot @swap @raw-io @clock @obsolete @cpu-emulation
 PrivateUsers=no
 
 # See deviation 3 above.
@@ -95,7 +108,7 @@ MemoryDenyWriteExecute=no
 # --disable-dev-shm-usage in the launch flags already moves shared memory into
 # the private /tmp this unit gets from PrivateTmp.
 
-# Chrome is the memory hog on this box. A page that allocates until the OOM
+# Chrome is the memory hog here. A page that allocates until the OOM
 # killer arrives should take this unit down and get restarted, not take the
 # database with it.
 MemoryMax=4G

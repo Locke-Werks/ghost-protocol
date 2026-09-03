@@ -182,9 +182,15 @@ chown root:"$BROWSER_USER" "$CONF/browser.env"
 chmod 0640 "$CONF/env" "$CONF/db_password" "$CONF/browser_ws_path" "$CONF/browser.env"
 
 if [ ! -f "$CONF/oauth_signing_key.pem" ]; then
+  # Minted as root into a temporary file and installed, not written in place by
+  # the service account: $CONF is 0711, so $MCP_USER can traverse it to read its
+  # own files but cannot create one. That is the correct shape for a config
+  # directory and it is the reason this is two steps rather than one.
   warn "No OAuth signing key yet. After the first deploy, run:"
-  warn "  sudo -u $MCP_USER $ROOT/runtime/bin/node $ROOT/current/dist/cli.js oauth keygen $CONF/oauth_signing_key.pem"
-  warn "  chown $MCP_USER:$MCP_USER $CONF/oauth_signing_key.pem && chmod 0600 $CONF/oauth_signing_key.pem"
+  warn "  umask 077"
+  warn "  $ROOT/runtime/bin/node $ROOT/current/dist/cli.js oauth keygen /tmp/gp-signing.pem"
+  warn "  install -o $MCP_USER -g $MCP_USER -m 0600 /tmp/gp-signing.pem $CONF/oauth_signing_key.pem"
+  warn "  shred -u /tmp/gp-signing.pem"
 fi
 
 # --------------------------------------------------------------------- units

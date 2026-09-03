@@ -94,8 +94,13 @@ log "Opening read access for the browser account"
 "${SSH[@]}" "sudo -n -u $APP_USER chmod -R a+rX '$REL'"
 
 log "Flipping symlink and restarting"
+# readlink WITHOUT -f: it prints a target only when the path really is a
+# symlink, and nothing otherwise. `readlink -f` resolves a path that does not
+# exist yet and happily returns the link's own location, so on a first deploy
+# PREV became \$ROOT/current and the revert below pointed the link at itself.
+# That leaves ELOOP on every access and no way back except deleting it by hand.
 "${SSH[@]}" "set -e
-  PREV=\$(readlink -f $ROOT/current || true)
+  PREV=\$(readlink $ROOT/current 2>/dev/null || true)
   sudo -n -u $APP_USER ln -sfn $REL $ROOT/current
   # Browser first: the MCP service reconnects on its own, but starting it
   # against an old browser build wastes a restart.
@@ -110,12 +115,15 @@ log "Flipping symlink and restarting"
     sleep 1
   done
 
-  echo 'health check failed; reverting' >&2
+  echo 'health check failed' >&2
   sudo -n journalctl -u $APP -n 30 --no-pager >&2 || true
-  if [ -n \"\$PREV\" ]; then
+  if [ -n \"\$PREV\" ] && [ -d \"\$PREV\" ] && [ \"\$PREV\" != $ROOT/current ]; then
+    echo \"  reverting to \$PREV\" >&2
     sudo -n -u $APP_USER ln -sfn \"\$PREV\" $ROOT/current
     sudo -n systemctl restart $APP-browser
     sudo -n systemctl restart $APP
+  else
+    echo '  no previous release to revert to; the new one is left in place' >&2
   fi
   exit 1"
 
