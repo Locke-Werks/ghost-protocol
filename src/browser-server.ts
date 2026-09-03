@@ -32,6 +32,11 @@ async function main(): Promise<void> {
   const server = await chromium.launchServer({
     channel: 'chrome',
     headless: true,
+    // Playwright disables Chromium's sandbox by default and passes --no-sandbox
+    // for you. That default exists because the sandbox needs privileges a CI
+    // container usually lacks, and it silently undoes the entire reason this
+    // process runs in its own hardened unit. It has to be asked for explicitly.
+    chromiumSandbox: true,
     args: launchArgs(proxyServer),
     // Bound to loopback. Caddy never sees this and it is not in any allowlist.
     host: '127.0.0.1',

@@ -97,7 +97,10 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # See deviations 1 and 2 above. The namespace names are systemd's own, so it is
 # `mnt` and not `mount`: an unrecognised entry makes systemd discard the whole
 # line with a warning, which silently leaves namespaces unrestricted.
-RestrictNamespaces=user pid net mnt ipc uts cgroup
+# Listing every type systemd knows is the same as not restricting anything, and
+# systemctl show then reports RestrictNamespaces=no. Chrome's sandbox needs
+# these four; uts and cgroup stay denied.
+RestrictNamespaces=user pid net mnt
 SystemCallFilter=~@module @reboot @swap @raw-io @clock @obsolete @cpu-emulation
 PrivateUsers=no
 
