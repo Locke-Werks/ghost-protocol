@@ -1,0 +1,72 @@
+# Ghost Protocol MCP service.
+#
+# Installed to /etc/systemd/system/ghost-protocol.service. Runs as `ghostmcp`,
+# which owns the tree, holds the database credential and the OAuth signing key,
+# and never runs a browser. The browser lives in ghost-protocol-browser.service
+# under a different account; that file explains why.
+
+[Unit]
+Description=Ghost Protocol MCP server (Streamable HTTP on 127.0.0.1:17719)
+Documentation=https://github.com/Locke-Werks/ghost-protocol
+After=network-online.target postgresql@18-main.service ghost-protocol-browser.service
+Wants=network-online.target ghost-protocol-browser.service
+# Wants rather than Requires: this service answers /healthz and returns clean
+# tool errors while the browser is down, which beats refusing to start.
+
+[Service]
+Type=simple
+User=ghostmcp
+Group=ghostmcp
+Environment=GHOST_CONFIG=/etc/ghost-protocol/ghost-protocol.toml
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/ghost-protocol/env
+WorkingDirectory=/opt/ghost-protocol/current
+ExecStart=/opt/ghost-protocol/runtime/bin/node /opt/ghost-protocol/current/dist/index.js
+Restart=on-failure
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+# Hardening. This process needs a TCP socket, the Postgres connection, and read
+# access to its own tree. Nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+RemoveIPC=yes
+UMask=0077
+
+# AF_NETLINK on top of the usual three: glibc's resolver opens a netlink socket
+# to enumerate interfaces for source-address selection, and libuv runs
+# getaddrinfo on a threadpool where that failure surfaces as an unresolvable
+# name rather than as anything diagnostic.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+# DEVIATION from the house block: MemoryDenyWriteExecute is off.
+# V8 compiles JavaScript to machine code at runtime and has to make written
+# pages executable to do it, so the house `yes` stops Node from starting at all.
+# The alternative, --jitless, costs roughly an order of magnitude of throughput.
+# Recorded in the registry as a known deviation for both Node units.
+MemoryDenyWriteExecute=no
+
+# A runaway page cannot take the box down with it.
+MemoryMax=1G
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+{
+  "name": "ghost-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A relay MCP server: fetches and renders pages that refuse AI-provider clients, and hands back the result as untrusted data.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cli": "node dist/cli.js",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@mozilla/readability": "^0.6.0",
+    "express": "^5.2.1",
+    "jose": "^6.2.10",
+    "playwright-core": "^1.62.1",
+    "postgres": "^3.4.9",
+    "sharp": "^0.35.4",
+    "smol-toml": "^1.8.0",
+    "turndown": "^7.2.4",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/turndown": "^5.0.5",
+    "typescript": "^5.9.0"
+  }
+}

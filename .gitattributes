@@ -1,0 +1,7 @@
+# Normalise to LF in the repository. deploy.sh ships the committed tree with
+# `git archive`, so a CRLF in a shell script or a unit file arrives on Debian as
+# a literal carriage return and the kernel reports "bad interpreter".
+* text=auto eol=lf
+
+*.png binary
+*.ico binary

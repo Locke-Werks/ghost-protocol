@@ -1,0 +1,107 @@
+# Ghost Protocol browser process.
+#
+# The component that renders attacker-controlled pages, run as `ghostbrowser`:
+# an account that owns nothing. It cannot read /etc/ghost-protocol, has no
+# Postgres role, and holds no key. If a page ever achieves code execution here,
+# it lands somewhere with nothing to take and nothing to escalate through.
+#
+# That split is the reason this is a separate unit rather than a child process
+# of the MCP service. In one process, a renderer escape would land on the
+# account holding the database password and the OAuth signing key.
+#
+# ---------------------------------------------------------------------------
+# DEVIATIONS from the house hardening block, all four load-bearing:
+#
+#   1. RestrictNamespaces is a permit-list rather than `yes`.
+#   2. SystemCallFilter adds @sandbox plus chroot/unshare/setns/pivot_root.
+#
+#      Chrome's own sandbox is built from user, PID, network and mount
+#      namespaces plus seccomp-bpf. The house `RestrictNamespaces=yes` blocks
+#      exactly the calls it needs, and Chrome's response to being unable to
+#      build its sandbox is to refuse to start. The usual fix at that point is
+#      --no-sandbox, which is the wrong trade every time and especially here:
+#      it would remove the only boundary between a compromised renderer and
+#      this account. Widening the syscall filter keeps Chrome's sandbox and is
+#      strictly the safer of the two.
+#
+#   3. MemoryDenyWriteExecute is off. V8 makes written pages executable to run
+#      JIT-compiled JavaScript; with the house `yes`, Chrome does not start.
+#
+#   4. PrivateUsers stays off. It would give this unit its own user namespace,
+#      and Chrome then cannot nest its own inside it.
+#
+# Everything else is tighter than the house block, not looser: no network
+# namespace of its own is needed because all egress is forced through the
+# guard proxy on loopback, the tree is read-only, and the only writable paths
+# are the systemd-managed state and cache directories.
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=Ghost Protocol headless Chrome (CDP on 127.0.0.1:17716)
+Documentation=https://github.com/Locke-Werks/ghost-protocol
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ghostbrowser
+Group=ghostbrowser
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/ghost-protocol/browser.env
+WorkingDirectory=/opt/ghost-protocol/current
+ExecStart=/opt/ghost-protocol/runtime/bin/node /opt/ghost-protocol/current/dist/browser-server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Chrome's profile and caches. /opt stays read-only to this unit.
+StateDirectory=ghost-protocol-browser
+CacheDirectory=ghost-protocol-browser
+Environment=XDG_CONFIG_HOME=/var/lib/ghost-protocol-browser
+Environment=XDG_CACHE_HOME=/var/cache/ghost-protocol-browser
+Environment=HOME=/var/lib/ghost-protocol-browser
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+RemoveIPC=yes
+UMask=0077
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+# See deviations 1 and 2 above.
+RestrictNamespaces=user pid net mount ipc uts cgroup
+SystemCallFilter=@system-service @sandbox
+SystemCallFilter=chroot unshare setns pivot_root clone3
+PrivateUsers=no
+
+# See deviation 3 above.
+MemoryDenyWriteExecute=no
+
+# PrivateDevices is deliberately absent: headless Chrome wants /dev/shm, and
+# --disable-dev-shm-usage in the launch flags already moves shared memory into
+# the private /tmp this unit gets from PrivateTmp.
+
+# Chrome is the memory hog on this box. A page that allocates until the OOM
+# killer arrives should take this unit down and get restarted, not take the
+# database with it.
+MemoryMax=4G
+MemorySwapMax=0
+TasksMax=1024
+OOMPolicy=continue
+
+[Install]
+WantedBy=multi-user.target

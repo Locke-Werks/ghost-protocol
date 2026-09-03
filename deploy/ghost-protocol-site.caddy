@@ -1,0 +1,55 @@
+# Drop in as /etc/caddy/conf.d/ghost-protocol-site.caddy, on a Caddyfile that
+# imports that directory. Change the hostname below to yours.
+#
+# DNS for the name must already point at this host; Caddy then issues the
+# certificate on the first request. If your Caddyfile sets `http_port 0` and
+# `auto_https disable_redirects`, as this was written against, there is no
+# plain-HTTP listener at all and clients must use the explicit https:// URL.
+#
+# Only the MCP and OAuth surface is proxied. Everything else 404s, which is what
+# keeps a mistake in the application's own routing from becoming a public one.
+
+ghost.example.com {
+	log {
+		output file /var/log/caddy/ghost-protocol.log {
+			roll_size 10mb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	# Path by path: the MCP endpoint, the health check, the OAuth endpoints, the
+	# RFC 9728 and 8414 discovery documents (openid-configuration is an alias
+	# some clients probe first), and the JWKS.
+	@allowed path /mcp /mcp/* /healthz /oauth/authorize /oauth/token /oauth/register /.well-known/oauth-protected-resource* /.well-known/oauth-authorization-server* /.well-known/openid-configuration* /.well-known/jwks.json
+	handle @allowed {
+		reverse_proxy 127.0.0.1:17719 {
+			# Overwrite X-Forwarded-For with the address Caddy actually saw,
+			# discarding whatever the client sent. The rate limiters and the
+			# audit trail read this header; without the overwrite a client
+			# could spoof its way past both. Scoped to this site block only.
+			# Caddy warns that this is unnecessary because it forwards the
+			# header anyway. It forwards what the client sent; this replaces it.
+			header_up X-Forwarded-For {http.request.remote.host}
+
+			# A full-page capture of a slow site can take most of a minute.
+			transport http {
+				read_timeout 120s
+				write_timeout 120s
+			}
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

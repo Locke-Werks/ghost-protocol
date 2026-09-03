@@ -1,0 +1,102 @@
+# Ghost Protocol configuration.
+#
+# Shape lives here. Secrets do not: the database URL, the password pepper and
+# the browser websocket path all come from the environment, so this file can be
+# read by anyone who can read the process without handing them anything.
+#
+# On the host this is /etc/ghost-protocol/ghost-protocol.toml, root:ghostmcp 0640.
+
+[server]
+# Loopback only. Caddy terminates TLS in front and proxies
+# https://<your-host>/mcp to here.
+http_bind      = "127.0.0.1:17719"
+max_body_bytes = 1048576          # 1 MiB; larger requests get 413
+
+[browser]
+# Where the browser unit listens. The path itself comes from
+# GHOST_BROWSER_WS_PATH, which both units read, because it is the only thing
+# stopping another local account from driving the browser.
+ws_host = "127.0.0.1:17716"
+
+locale          = "en-US"
+timezone        = "America/Chicago"
+viewport_width  = 1280
+viewport_height = 800
+navigation_timeout_ms = 45000
+
+# Leave unset. The user agent is built from the Chrome actually running, so an
+# unattended Chrome upgrade cannot leave a stale version in the header while the
+# TLS and HTTP/2 fingerprints move on without it. Set it only to pin a specific
+# string for a test.
+# user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ..."
+
+[egress]
+# The guarded forward proxy. Every request the browser makes goes through it,
+# including the ones a page starts on its own, so name resolution happens here
+# and not inside Chrome.
+proxy_bind = "127.0.0.1:17715"
+
+# Empty means every publicly routable host is reachable. Private, loopback,
+# link-local and reserved ranges are refused regardless of what is listed here;
+# that is not configurable and should not become configurable.
+allow_hosts = []
+
+# Extra addresses to refuse on top of the built-in ranges. This host's own
+# public address belongs here. Without it the relay can be pointed back at the
+# reverse proxy in front of it and used to loop through whatever else that proxy
+# serves, which is a gap the built-in ranges cannot close because the address is
+# a perfectly ordinary public one.
+deny_addresses = ["203.0.113.10"]
+
+[sessions]
+max_total         = 8     # across every principal; each is a live browser context
+max_per_principal = 3
+idle_timeout_s    = 600   # 10 minutes without a call and the session is dropped
+max_lifetime_s    = 3600  # a session is never older than an hour, busy or not
+
+[capture]
+width           = 1280
+# Roughly 5:4 at the width above. A taller tile gets downscaled past legibility
+# by the time it reaches a vision model, which is the whole reason for tiling.
+tile_height     = 1600
+max_tiles       = 4
+webp_quality    = 78
+max_text_bytes  = 262144
+
+[auth]
+# Only meaningful over HTTP. Turning this off is only safe if the bind address
+# is unreachable from anywhere but this machine.
+enabled = true
+
+# The embedded OAuth 2.1 authorization server. This is what lets claude.ai and
+# ChatGPT add Ghost Protocol as a remote connector: RFC 8414/9728 discovery,
+# RFC 7591 dynamic client registration, a PKCE authorization-code flow and a
+# built-in login page backed by `ghost-cli passwd`.
+[auth.oauth]
+enabled  = true
+issuer   = "https://ghost.example.com"       # no trailing slash
+resource = "https://ghost.example.com/mcp"   # RFC 8707 audience
+
+signing_key_path = "/etc/ghost-protocol/oauth_signing_key.pem"  # ghost-cli oauth keygen
+# Rotated-out keys stay listed in the JWKS until the tokens they signed expire.
+previous_key_paths = []
+
+# There is no revocation store, so an access token is good until it expires.
+# Keep it short and let the refresh token carry longevity: that one is a
+# database row and can be killed.
+access_token_ttl_s  = 900
+auth_code_ttl_s     = 600
+refresh_token_ttl_s = 2592000
+
+# Registration refuses a redirect_uri outside these hosts, which is what stops
+# an open registration endpoint from becoming an open redirector.
+redirect_hosts = ["claude.ai", "claude.com", "chatgpt.com", "openai.com"]
+max_clients    = 50
+
+# Who may sign in. A password set for a principal not listed here is unusable,
+# and a token naming one is rejected at the door.
+[[auth.principals]]
+name = "operator"
+
+[logging]
+level = "info"      # debug | info | warn | error

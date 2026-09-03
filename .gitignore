@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+logs/
+.env
+config/ghost-protocol.toml
+*.pem
+
+# Names the host, the key and the public address. Never committed.
+deploy/deploy.env
