@@ -54,6 +54,10 @@ done
 # --------------------------------------------------------------------- tree
 note "Creating $ROOT"
 install -d -o "$MCP_USER" -g "$MCP_USER" -m 0755 "$ROOT" "$ROOT/releases" "$ROOT/runtime"
+# npm's cache. The service account has no home directory, so without somewhere
+# writable named explicitly npm tries to create one under /home and the build
+# dies on its first write.
+install -d -o "$MCP_USER" -g "$MCP_USER" -m 0755 "$ROOT/.npm"
 # 0755 rather than 0750: the browser account has to read the built code and the
 # vendored Node out of this tree. It reads; it never writes.
 

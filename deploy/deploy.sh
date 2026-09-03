@@ -70,8 +70,12 @@ git archive --format=tar HEAD | "${SSH[@]}" "set -e
   sudo -n -u $APP_USER tar -x -C '$REL'"
 
 log "Installing dependencies and building"
+# HOME and the npm cache are forced into the app's own tree. The service account
+# is created with --no-create-home, so npm's default cache path under /home does
+# not exist and is not writable, and npm fails on the first write rather than
+# falling back to anywhere sensible.
 "${SSH[@]}" "set -e
-  sudo -n -u $APP_USER env PATH=$RUNTIME:\$PATH sh -c '
+  sudo -n -u $APP_USER env PATH=$RUNTIME:\$PATH HOME=$ROOT npm_config_cache=$ROOT/.npm sh -c '
     set -a; . /etc/$APP/env; set +a
     cd $REL
     # --include=dev is required: NODE_ENV=production in the env file otherwise
