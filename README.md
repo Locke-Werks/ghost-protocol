@@ -164,6 +164,50 @@ Being straight about the limits is more useful than a list of features.
   its search box is half a docs site, which is also where the read-only
   guarantee stops being structural and starts being a convention.
 
+## Intended Use
+
+Ghost Protocol fetches web pages on behalf of one person, one page at a time, in
+response to something that person actually asked for. That is the whole design
+intent. It exists because a growing number of sites now serve a blank page or a
+403 to anything that looks automated, including an assistant reading a single
+article at your request.
+
+Use it the way you would use a browser. Read a page. Follow a link. Check a doc.
+If the volume or shape of your traffic would not be plausible coming from a
+human at a keyboard, you are outside the intended use.
+
+## Not For
+
+- Bulk extraction, crawling, or mirroring
+- Building datasets or training corpora
+- Circumventing authentication, paywalls, licensing, or access controls
+- Evading a block that exists to protect a system rather than to express a
+  preference about automation
+
+The relay presents as an ordinary browser and does not identify itself as a bot.
+It does not consult or honor robots.txt. That is stated plainly here because you
+should know it going in. robots.txt is addressed to crawlers, and this is not a
+crawler, but reasonable people put that line in different places. If a site has
+said in plain language that it does not want AI-mediated access to its content,
+whether to honor that is your decision and your responsibility. The tool will
+not make it for you.
+
+## For Site Operators
+
+If you would rather this tool not reach your content, ordinary controls work.
+Authentication, session requirements, rate limiting, and behavioral WAF
+challenges all stop it. Ghost Protocol makes no attempt to defeat any of them
+and is not designed to. It will fail against a real control, by design, and that
+is the intended outcome.
+
+If you believe traffic from this project is causing you a problem, contact
+archon@lockewerks.com and I will address it.
+
+## Responsibility
+
+Operators are responsible for their own use, including compliance with site
+terms and applicable law. Nothing in this document is legal advice.
+
 ## Requirements
 
 - Debian 13 or similar, Node 24 (vendored into the tree rather than taken from
