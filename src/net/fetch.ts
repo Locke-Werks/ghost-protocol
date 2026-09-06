@@ -27,6 +27,15 @@ export interface FetchOptions {
   timeoutMs: number;
   maxRedirects: number;
   extraHeaders?: Record<string, string>;
+  /**
+   * A larger cap for a body that is not text.
+   *
+   * A PDF has no business being measured against the same limit as a page of
+   * markdown, and the two cannot be told apart before the request is made — the
+   * Content-Type arrives with the headers, ahead of the body, which is late
+   * enough to choose a cap and early enough to still enforce one.
+   */
+  maxBinaryBytes?: number;
 }
 
 export interface HopRecord {
@@ -40,13 +49,20 @@ export interface FetchResult {
   status: number;
   statusText: string;
   headers: Record<string, string>;
+  /** The body as text, bounded by `maxBytes` whatever `bytes` holds. */
   body: string;
+  /** The body before any decoding, for a caller that wants the file itself. */
+  bytes: Buffer;
   bodyBytes: number;
+  /** Whether `bytes` was cut short. */
   truncated: boolean;
   /** Every redirect followed, each of which was guarded in its own right. */
   hops: HopRecord[];
   contentType: string;
 }
+
+/** Content types whose bodies are text and are capped as text. */
+const TEXTUAL = /^(text\/|application\/(json|xml|javascript|x-ndjson|xhtml\+xml)|[^/]+\/[^;]*\+(json|xml))/i;
 
 function chromeHeaders(o: FetchOptions, url: URL): Record<string, string> {
   const brand = `"Not=A?Brand";v="24", "Chromium";v="${o.chromeMajor}", "Google Chrome";v="${o.chromeMajor}"`;
@@ -101,7 +117,13 @@ export async function guardedFetch(rawUrl: string, o: FetchOptions): Promise<Fet
       continue;
     }
 
-    const { body, bytes, truncated } = await readBody(res, o.maxBytes, o.method === 'HEAD');
+    const contentType = firstHeader(res.headers['content-type']) ?? '';
+    const cap =
+      o.maxBinaryBytes && contentType && !TEXTUAL.test(contentType.trim())
+        ? Math.max(o.maxBytes, o.maxBinaryBytes)
+        : o.maxBytes;
+
+    const { buffer, bytes, truncated } = await readBody(res, cap, o.method === 'HEAD');
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(res.headers)) {
       headers[k] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
@@ -112,11 +134,16 @@ export async function guardedFetch(rawUrl: string, o: FetchOptions): Promise<Fet
       status,
       statusText: res.statusMessage ?? '',
       headers,
-      body,
+      // The text view stays under the text cap even when the buffer was allowed
+      // past it, so a 25 MB PDF fetched for the document reader is not also
+      // decoded into a 25 MB string nobody is going to read. That only clips on
+      // the binary path, where this field goes unused.
+      body: (buffer.length > o.maxBytes ? buffer.subarray(0, o.maxBytes) : buffer).toString('utf8'),
+      bytes: buffer,
       bodyBytes: bytes,
       truncated,
       hops,
-      contentType: firstHeader(res.headers['content-type']) ?? '',
+      contentType,
     };
   }
   throw new Error('redirect loop');
@@ -160,10 +187,10 @@ async function readBody(
   res: IncomingMessage,
   maxBytes: number,
   skip: boolean,
-): Promise<{ body: string; bytes: number; truncated: boolean }> {
+): Promise<{ buffer: Buffer; bytes: number; truncated: boolean }> {
   if (skip) {
     res.resume();
-    return { body: '', bytes: 0, truncated: false };
+    return { buffer: Buffer.alloc(0), bytes: 0, truncated: false };
   }
 
   const chunks: Buffer[] = [];
@@ -202,5 +229,5 @@ async function readBody(
     raw = raw.subarray(0, maxBytes);
     truncated = true;
   }
-  return { body: raw.toString('utf8'), bytes, truncated };
+  return { buffer: raw, bytes, truncated };
 }

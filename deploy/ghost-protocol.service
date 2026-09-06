@@ -64,8 +64,12 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # Recorded in the registry as a known deviation for both Node units.
 MemoryDenyWriteExecute=no
 
-# A runaway page cannot take the box down with it.
-MemoryMax=1G
+# A runaway page cannot take the box down with it. The headroom over the old 1G
+# is for document parsing: each parse runs in a worker with its own heap ceiling
+# (documents.parse_memory_mb, 384 MiB), and documents.parse_concurrency of them
+# may be in flight at once. Those two multiplied have to stay under this, with
+# room left for the main thread and the file itself.
+MemoryMax=1500M
 TasksMax=256
 
 [Install]

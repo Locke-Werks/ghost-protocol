@@ -63,6 +63,36 @@ max_tiles       = 4
 webp_quality    = 78
 max_text_bytes  = 262144
 
+[documents]
+# Reading PDFs and Office files. Turn this off and ghost_document refuses, and a
+# URL that serves a document comes back as an unrendered page instead.
+enabled = true
+
+# The most this relay will pull down for one file. A document larger than this
+# is refused with its size rather than truncated: a truncated PDF does not parse
+# at all, so a partial download is not a partial answer.
+max_bytes = 26214400        # 25 MiB
+
+# Parsing runs in a worker thread with its own heap ceiling, so a crafted file
+# can be abandoned instead of taking the process down. Keep the ceiling and the
+# concurrency multiplied together well under the unit's MemoryMax.
+parse_timeout_ms  = 30000
+parse_memory_mb   = 384
+parse_concurrency = 2
+
+# Pages, sheets or slides read in one call. The total is always reported, and
+# the caller asks for the next range with first_page and last_page.
+max_sections = 50
+
+# Per spreadsheet sheet. A sheet is not a document; the shape of the data is
+# worth more than row 40,000.
+max_rows = 200
+max_cols = 40
+
+# Cap on returning the raw file alongside the text, which only happens when the
+# caller passes include_file. Base64 adds a third on top of this.
+max_attachment_bytes = 4194304   # 4 MiB
+
 [auth]
 # Only meaningful over HTTP. Turning this off is only safe if the bind address
 # is unreachable from anywhere but this machine.

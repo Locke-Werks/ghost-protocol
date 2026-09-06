@@ -54,6 +54,17 @@ export interface Config {
     webpQuality: number;
     maxTextBytes: number;
   };
+  documents: {
+    enabled: boolean;
+    maxBytes: number;
+    parseTimeoutMs: number;
+    parseMemoryMb: number;
+    parseConcurrency: number;
+    maxSections: number;
+    maxRows: number;
+    maxCols: number;
+    maxAttachmentBytes: number;
+  };
   auth: { enabled: boolean; oauth: OAuthConfig | null; principals: PrincipalConfig[] };
   logging: { level: string };
   databaseUrl: string;
@@ -133,6 +144,7 @@ export function loadConfig(path: string): Config {
   const captureRaw = raw.capture ?? {};
   const sessionsRaw = raw.sessions ?? {};
   const loggingRaw = raw.logging ?? {};
+  const documentsRaw = raw.documents ?? {};
 
   return {
     server: {
@@ -167,6 +179,17 @@ export function loadConfig(path: string): Config {
       maxTiles: num(captureRaw.max_tiles, 4),
       webpQuality: num(captureRaw.webp_quality, 78),
       maxTextBytes: num(captureRaw.max_text_bytes, 262_144),
+    },
+    documents: {
+      enabled: documentsRaw.enabled !== false,
+      maxBytes: num(documentsRaw.max_bytes, 25 * 1024 * 1024),
+      parseTimeoutMs: num(documentsRaw.parse_timeout_ms, 30_000),
+      parseMemoryMb: num(documentsRaw.parse_memory_mb, 384),
+      parseConcurrency: num(documentsRaw.parse_concurrency, 2),
+      maxSections: num(documentsRaw.max_sections, 50),
+      maxRows: num(documentsRaw.max_rows, 200),
+      maxCols: num(documentsRaw.max_cols, 40),
+      maxAttachmentBytes: num(documentsRaw.max_attachment_bytes, 4 * 1024 * 1024),
     },
     auth: {
       enabled: authRaw.enabled !== false,

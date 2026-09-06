@@ -11,13 +11,14 @@
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "cli": "node dist/cli.js",
-    "test": "node --test dist/**/*.test.js"
+    "test": "npm run build && node --test \"dist/**/*.test.js\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "express": "^5.2.1",
     "jose": "^6.2.10",
+    "pdfjs-dist": "^6.3.289",
     "playwright-core": "^1.62.1",
     "postgres": "^3.4.9",
     "sharp": "^0.35.4",

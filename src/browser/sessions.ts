@@ -18,12 +18,19 @@ import type { Config } from '../config.js';
 import { log, errFields } from '../util/log.js';
 import { applyIdentity, buildIdentity, INIT_SCRIPT, type Identity } from './fingerprint.js';
 import { READABILITY_SRC, TURNDOWN_SRC } from './extract.js';
+import { trackDownloads } from './download.js';
 
 export interface EgressEvent {
   host: string;
   port: number;
   allowed: boolean;
   reason?: string;
+  at: number;
+}
+
+export interface DownloadAttempt {
+  url: string;
+  filename: string | null;
   at: number;
 }
 
@@ -40,6 +47,12 @@ export interface Session {
   /** Hosts this session reached, allowed or refused. */
   egress: EgressEvent[];
   navigations: number;
+  /**
+   * Files the page tried to hand over. Downloads are refused, so none of these
+   * reached the disk; the URL is kept so a click that produced a file can be
+   * reported as one and read with ghost_document.
+   */
+  downloads: DownloadAttempt[];
 }
 
 export class SessionLimit extends Error {}
@@ -179,7 +192,9 @@ export class BrowserRuntime {
       title: '',
       egress: [],
       navigations: 0,
+      downloads: [],
     };
+    trackDownloads(page, session);
     this.sessions.set(session.id, session);
     log.info('session opened', { session: session.id, principal, total: this.sessions.size });
     return session;

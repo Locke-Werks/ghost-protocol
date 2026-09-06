@@ -7,12 +7,23 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Response } from 'playwright-core';
 import type { Config } from '../config.js';
-import type { BrowserRuntime } from '../browser/sessions.js';
+import type { BrowserRuntime, Session } from '../browser/sessions.js';
 import { SessionLimit } from '../browser/sessions.js';
-import { navigate, readPage, runActions, type Action, type WaitUntil } from '../browser/navigate.js';
+import {
+  navigate,
+  readPage,
+  runActions,
+  NavigationBecameDownload,
+  type Action,
+  type WaitUntil,
+} from '../browser/navigate.js';
+import { bytesFromResponse, fetchBytes, DocumentTooLarge } from '../browser/download.js';
 import { guardedFetch } from '../net/fetch.js';
 import { EgressDenied } from '../net/guard.js';
+import { looksLikeDocument, sniffContainer, UnreadableDocument } from '../doc/index.js';
+import { readDocument, documentFailureText, type DocumentArgs, type DocumentSource } from './documents.js';
 import { buildReadResult, errorResult, type ContentBlock, type TextFormat } from './results.js';
 import { prepareUntrusted } from '../util/untrusted.js';
 import { log, errFields } from '../util/log.js';
@@ -91,7 +102,7 @@ function principalOf(extra: unknown): string {
   return auth?.extra?.principal ?? 'local';
 }
 
-function failure(e: unknown): { content: ContentBlock[]; isError: true } {
+function failure(e: unknown, url?: string): { content: ContentBlock[]; isError: true } {
   if (e instanceof EgressDenied) {
     return errorResult(
       `Refused: ${e.message}.\n\n` +
@@ -100,6 +111,11 @@ function failure(e: unknown): { content: ContentBlock[]; isError: true } {
     );
   }
   if (e instanceof SessionLimit) return errorResult(e.message);
+  if (e instanceof DocumentTooLarge) return errorResult(`Refused: ${e.message}.`);
+  if (url) {
+    const doc = documentFailureText(e, url);
+    if (doc) return errorResult(doc);
+  }
   const msg = e instanceof Error ? e.message : String(e);
   return errorResult(msg.slice(0, 1500));
 }
@@ -114,6 +130,118 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     .max(cfg.capture.maxTextBytes)
     .optional()
     .describe(`Cap on returned text, in bytes. Defaults to ${cfg.capture.maxTextBytes}.`);
+
+  const bytesOptions = {
+    maxBytes: cfg.documents.maxBytes,
+    timeoutMs: cfg.browser.navigationTimeoutMs,
+    maxRedirects: 5,
+    allowHosts: cfg.egress.allowHosts,
+  };
+
+  /**
+   * Get a document's bytes and read it.
+   *
+   * Three ways in, in order of preference. `preloaded` is the body of a
+   * navigation the browser already made and costs nothing. A session fetches
+   * through its own context, which is what carries the cookies a file behind a
+   * login needs. With neither, the plain HTTP path is used: it holds no cookies,
+   * but neither does a brand new browser context, and it does not spend a
+   * session slot or need the browser unit to be up at all.
+   */
+  const readDocumentAt = async (
+    url: string,
+    args: DocumentArgs,
+    notes: string[],
+    from: { session: Session; sessionId?: string } | { preloaded: Buffer; session: Session } | null,
+  ) => {
+    let source: DocumentSource;
+    let sessionId: string | undefined;
+
+    if (from && 'preloaded' in from) {
+      source = {
+        bytes: from.preloaded,
+        contentType: '',
+        requestedUrl: url,
+        finalUrl: url,
+        status: null,
+        filename: null,
+      };
+    } else if (from) {
+      sessionId = from.sessionId;
+      const fetched = await fetchBytes(from.session, url, bytesOptions);
+      source = { ...fetched, requestedUrl: url };
+      if (fetched.status >= 400) {
+        notes.push(`The server answered ${fetched.status} for this file; what follows is whatever it sent with that.`);
+      }
+    } else {
+      const fetched = await guardedFetch(url, {
+        method: 'GET',
+        userAgent: deps.userAgentRef.value,
+        chromeMajor: deps.chromeVersionRef.value.split('.')[0] ?? '141',
+        allowHosts: cfg.egress.allowHosts,
+        maxBytes: cfg.documents.maxBytes,
+        maxBinaryBytes: cfg.documents.maxBytes,
+        timeoutMs: 60_000,
+        maxRedirects: 5,
+      });
+      source = {
+        bytes: fetched.bytes,
+        contentType: fetched.contentType,
+        requestedUrl: url,
+        finalUrl: fetched.finalUrl,
+        status: fetched.status,
+        filename: null,
+      };
+      if (fetched.status >= 400) {
+        notes.push(`The server answered ${fetched.status} for this file; what follows is whatever it sent with that.`);
+      }
+      if (fetched.truncated) {
+        notes.push('The file was truncated at the byte cap before parsing, so what follows may be incomplete.');
+      }
+    }
+
+    if (source.bytes.byteLength === 0) {
+      throw new Error(`${url} returned no bytes, so there is nothing to read.`);
+    }
+    return await readDocument(source, cfg, args, notes, sessionId);
+  };
+
+  /**
+   * A navigation that landed on a file rather than a page.
+   *
+   * Chrome draws a PDF in its own viewer, whose DOM is one `<embed>` element,
+   * so extracting it the usual way returns an empty page and a screenshot of a
+   * toolbar. The Content-Type is what says so, and the body Chrome already has
+   * is what saves a second request.
+   */
+  const maybeReadAsDocument = async (
+    session: Session,
+    requestedUrl: string,
+    response: Response | null,
+    args: DocumentArgs,
+    sessionId?: string,
+  ) => {
+    if (!cfg.documents.enabled || !response) return null;
+    const contentType = response.headers()['content-type'] ?? '';
+    if (!looksLikeDocument(contentType, response.url())) return null;
+
+    const preloaded = await bytesFromResponse(response, cfg.documents.maxBytes);
+    // A login wall or an error page served under a document's Content-Type is
+    // still a page, and Chrome has already rendered it. Reading the bytes as a
+    // document would hand back HTML source where the page itself was available.
+    if (preloaded && sniffContainer(preloaded) === 'text') return null;
+
+    const notes = [
+      `${requestedUrl} served ${contentType || 'a file with no content type'}, so it was read as a ` +
+        'document rather than rendered as a page. No screenshot is taken of one.',
+    ];
+    return await readDocumentAt(
+      response.url(),
+      args,
+      notes,
+      preloaded ? { preloaded, session } : { session, sessionId },
+    );
+  };
 
   // ---------------------------------------------------------------- ghost_fetch
 
@@ -131,6 +259,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         'server, not from a model-provider network.\n\n' +
         'One-shot: the browser session is opened, used and destroyed. For clicking through a ' +
         'site across several turns, use ghost_open instead.\n\n' +
+        'A URL that turns out to be a PDF, a Word document, a spreadsheet or a deck is read as ' +
+        'that instead of returning a blank page, so pointing this at a document link works. ' +
+        'ghost_document does the same thing directly and takes a page range.\n\n' +
         UNTRUSTED_CONTRACT,
       inputSchema: {
         url: z.string().url().describe('The http or https URL to load.'),
@@ -162,7 +293,45 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       try {
         const session = await runtime.open(principal);
         sessionId = session.id;
-        const response = await navigate(session, args.url, args.wait_until as WaitUntil, cfg);
+
+        let response;
+        try {
+          response = await navigate(session, args.url, args.wait_until as WaitUntil, cfg);
+        } catch (e) {
+          // Chrome answered with a file rather than a page. The bytes are still
+          // there to be fetched, and for a format this reads that is the whole
+          // difference between an error and the document.
+          if (!(e instanceof NavigationBecameDownload) || !cfg.documents.enabled) throw e;
+          const doc = await readDocumentAt(
+            e.url,
+            { max_text_bytes: args.max_text_bytes },
+            [`${args.url} was answered with a download rather than a page, so the file was fetched and read.`],
+            { session },
+          );
+          deps.recordRequest({
+            principal, tool: 'ghost_fetch', url: args.url, finalUrl: e.url, ok: true,
+            injectionFindings: doc.findings.length, hiddenElements: doc.extract?.hidden.length ?? 0,
+            bytes: doc.bytes,
+          });
+          return { content: doc.content };
+        }
+
+        const documentResult = await maybeReadAsDocument(session, args.url, response, { max_text_bytes: args.max_text_bytes });
+        if (documentResult) {
+          deps.recordRequest({
+            principal,
+            tool: 'ghost_fetch',
+            url: args.url,
+            finalUrl: session.currentUrl,
+            status: response?.status() ?? null,
+            ok: true,
+            injectionFindings: documentResult.findings.length,
+            hiddenElements: documentResult.extract?.hidden.length ?? 0,
+            bytes: documentResult.bytes,
+          });
+          return { content: documentResult.content };
+        }
+
         const actionOutcomes = args.actions?.length
           ? await runActions(session, args.actions as Action[], cfg)
           : [];
@@ -204,7 +373,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         deps.recordRequest({
           principal, tool: 'ghost_fetch', url: args.url, ok: false, detail: detailOf(e),
         });
-        return failure(e);
+        return failure(e, args.url);
       } finally {
         if (sessionId) await runtime.close(sessionId).catch(() => {});
       }
@@ -243,7 +412,48 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       try {
         const session = await runtime.open(principal);
         sessionId = session.id;
-        const response = await navigate(session, args.url, args.wait_until as WaitUntil, cfg);
+
+        let response;
+        try {
+          response = await navigate(session, args.url, args.wait_until as WaitUntil, cfg);
+        } catch (e) {
+          if (!(e instanceof NavigationBecameDownload) || !cfg.documents.enabled) throw e;
+          const doc = await readDocumentAt(
+            e.url,
+            { max_text_bytes: args.max_text_bytes },
+            [`${args.url} was answered with a download rather than a page, so the file was fetched and read.`],
+            { session, sessionId: session.id },
+          );
+          deps.recordRequest({
+            principal, tool: 'ghost_open', url: args.url, finalUrl: e.url, ok: true,
+            injectionFindings: doc.findings.length, hiddenElements: doc.extract?.hidden.length ?? 0,
+            bytes: doc.bytes,
+          });
+          return { content: doc.content };
+        }
+
+        const documentResult = await maybeReadAsDocument(
+          session,
+          args.url,
+          response,
+          { max_text_bytes: args.max_text_bytes },
+          session.id,
+        );
+        if (documentResult) {
+          deps.recordRequest({
+            principal,
+            tool: 'ghost_open',
+            url: args.url,
+            finalUrl: session.currentUrl,
+            status: response?.status() ?? null,
+            ok: true,
+            injectionFindings: documentResult.findings.length,
+            hiddenElements: documentResult.extract?.hidden.length ?? 0,
+            bytes: documentResult.bytes,
+          });
+          return { content: documentResult.content };
+        }
+
         const read = await readPage(
           session,
           response?.status() ?? null,
@@ -284,7 +494,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         deps.recordRequest({
           principal, tool: 'ghost_open', url: args.url, ok: false, detail: detailOf(e),
         });
-        return failure(e);
+        return failure(e, args.url);
       }
     },
   );
@@ -318,6 +528,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       try {
         const session = runtime.get(args.session_id, principal);
         const before = session.currentUrl;
+        const downloadsBefore = session.downloads.length;
         const outcomes = await runActions(session, args.actions as Action[], cfg);
         const read = await readPage(
           session,
@@ -337,7 +548,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           format: args.format as TextFormat,
           maxTextBytes: args.max_text_bytes ?? cfg.capture.maxTextBytes,
           includeLinks: args.include_links,
-          notes: actionNotes(outcomes),
+          notes: [...actionNotes(outcomes), ...downloadNotes(session, downloadsBefore)],
           sessionId: session.id,
         });
         logRead(principal, before, read.finalUrl, findings.length, read.extract.hidden.length);
@@ -358,6 +569,115 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           principal, tool: 'ghost_act', url: 'session:' + args.session_id, ok: false, detail: detailOf(e),
         });
         return failure(e);
+      }
+    },
+  );
+
+  // ------------------------------------------------------------- ghost_document
+
+  server.registerTool(
+    'ghost_document',
+    {
+      title: 'Read a document through the relay',
+      description:
+        'Fetch a PDF, Word document, spreadsheet or slide deck and return its text.\n\n' +
+        'Reads: PDF, .docx, .xlsx, .pptx, and the OpenDocument equivalents (.odt, .ods, .odp). ' +
+        'A PDF comes back page by page; a workbook as one table per sheet, with dates rendered as ' +
+        'dates rather than as the day counts they are stored as; a deck slide by slide, speaker ' +
+        'notes included. Text a document hid — a Word run marked vanish, a white cell, a PDF ' +
+        'paragraph drawn in invisible rendering mode — is pulled out and reported separately ' +
+        'rather than mixed into the content.\n\n' +
+        `Large files are read in pieces: ${cfg.documents.maxSections} pages, sheets or slides at a ` +
+        'time, so ask for the next range with first_page and last_page. The total is always ' +
+        'reported.\n\n' +
+        'Pass session_id to fetch with a session\'s cookies, which is what a document behind a ' +
+        'login needs. Without one a fresh browser context is used and thrown away.\n\n' +
+        'Not read: pre-2007 Office files (.doc, .xls, .ppt), RTF, and images. A scanned PDF has no ' +
+        'text in it to extract and there is no OCR here; that comes back as a warning, not silence.\n\n' +
+        UNTRUSTED_CONTRACT,
+      inputSchema: {
+        url: z.string().url().describe('The http or https URL of the file.'),
+        session_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('From ghost_open. Use this when the file is behind a login the session already passed.'),
+        first_page: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('First page, sheet or slide to read, 1-based. Defaults to the first.'),
+        last_page: z.number().int().min(1).optional().describe('Last one to read, 1-based and inclusive.'),
+        max_rows: z
+          .number()
+          .int()
+          .min(1)
+          .max(cfg.documents.maxRows)
+          .optional()
+          .describe(`Rows per spreadsheet sheet. Defaults to ${cfg.documents.maxRows}.`),
+        max_cols: z
+          .number()
+          .int()
+          .min(1)
+          .max(cfg.documents.maxCols)
+          .optional()
+          .describe(`Columns per spreadsheet sheet. Defaults to ${cfg.documents.maxCols}.`),
+        max_text_bytes: maxTextBytesSchema,
+        password: z.string().max(200).optional().describe('For an encrypted PDF.'),
+        include_file: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Also return the raw file, base64 encoded. Off by default: encoding inflates it by a ' +
+              'third, and the text above is what is actually readable. Ask for it when you need the ' +
+              `file itself. Capped at ${Math.round(cfg.documents.maxAttachmentBytes / 1024 / 1024)} MB.`,
+          ),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true, idempotentHint: true },
+    },
+    async (args, extra) => {
+      const principal = principalOf(extra);
+      if (!cfg.documents.enabled) {
+        return errorResult('Document reading is turned off in this relay\'s configuration.');
+      }
+
+      try {
+        // A session id means "use these cookies". Without one the request goes
+        // out over the plain HTTP path, which is what a fresh browser context
+        // would amount to anyway and costs neither a session slot nor a
+        // dependency on the browser unit being up.
+        const from = args.session_id
+          ? { session: runtime.get(args.session_id, principal), sessionId: args.session_id }
+          : null;
+
+        const doc = await readDocumentAt(args.url, args, [], from);
+        deps.recordRequest({
+          principal,
+          tool: 'ghost_document',
+          url: args.url,
+          ok: true,
+          injectionFindings: doc.findings.length,
+          hiddenElements: doc.extract?.hidden.length ?? 0,
+          bytes: doc.bytes,
+        });
+        return { content: doc.content };
+      } catch (e) {
+        log.warn('ghost_document failed', { principal, url: args.url, ...errFields(e) });
+        deps.recordRequest({
+          principal, tool: 'ghost_document', url: args.url, ok: false, detail: detailOf(e),
+        });
+        // A file that arrived but would not parse, fetched without cookies, is
+        // very often a login page wearing a .pdf URL. Say so rather than
+        // leaving the caller to guess at the format.
+        if (!args.session_id && documentFailureText(e, args.url)) {
+          return errorResult(
+            `${documentFailureText(e, args.url)}\n\n` +
+              'This was fetched without a session, so no cookies were sent. If the file is behind a ' +
+              'login, open the site with ghost_open and pass its session_id.',
+          );
+        }
+        return failure(e, args.url);
       }
     },
   );
@@ -383,7 +703,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       }
       const lines = sessions.map((s) => {
         const hosts = [...new Set(s.egress.map((e) => (e.allowed ? e.host : `${e.host} (refused)`)))];
-        return [
+        const out = [
           `session ${s.id}`,
           `  at:        ${s.currentUrl}`,
           `  title:     ${s.title || '(none)'}`,
@@ -391,7 +711,14 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           `  idle:      ${Math.round((Date.now() - s.lastUsedAt) / 1000)}s of ${cfg.sessions.idleTimeoutS}s`,
           `  navigated: ${s.navigations} time(s)`,
           `  reached:   ${hosts.slice(0, 30).join(', ') || '(nothing yet)'}`,
-        ].join('\n');
+        ];
+        if (s.downloads.length > 0) {
+          out.push(
+            `  offered:   ${s.downloads.length} file(s), all refused. Read one with ghost_document: ` +
+              s.downloads.slice(-5).map((d) => d.url).join(', '),
+          );
+        }
+        return out.join('\n');
       });
       return { content: [{ type: 'text' as const, text: lines.join('\n\n') }] };
     },
@@ -435,6 +762,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         'served at the HTTP layer from one drawn by a script. Wrong for anything that fingerprints ' +
         'the TLS handshake, which will see Node rather than Chrome no matter what the headers say. ' +
         'If this comes back blocked and the page matters, try ghost_fetch.\n\n' +
+        'A URL that answers with a PDF or an Office file is read as a document rather than decoded ' +
+        'as text. Use ghost_document for one of those directly: it takes a page range and can use ' +
+        'a session\'s cookies.\n\n' +
         UNTRUSTED_CONTRACT,
       inputSchema: {
         url: z.string().url(),
@@ -454,6 +784,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           chromeMajor: deps.chromeVersionRef.value.split('.')[0] ?? '141',
           allowHosts: cfg.egress.allowHosts,
           maxBytes: args.max_bytes ?? cfg.capture.maxTextBytes,
+          maxBinaryBytes: cfg.documents.enabled ? cfg.documents.maxBytes : undefined,
           timeoutMs: 30_000,
           maxRedirects: args.follow_redirects,
         });
@@ -465,6 +796,63 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
               result.hops.map((h) => `${h.url} -> ${h.status} -> ${h.location}`).join(' | '),
           );
         }
+
+        // Handing back a PDF decoded as UTF-8 is technically the raw body and
+        // is of no use to anyone. The reader can have the document instead.
+        //
+        // The bytes decide, not the header: an octet-stream at a .pdf URL is
+        // routed here, and often turns out to be a login page. Anything that
+        // sniffs as text falls straight through to the raw view, which is what
+        // this tool is for in the first place.
+        if (
+          cfg.documents.enabled &&
+          args.method === 'GET' &&
+          result.bytes.byteLength > 0 &&
+          looksLikeDocument(result.contentType, result.finalUrl) &&
+          sniffContainer(result.bytes) !== 'text'
+        ) {
+          try {
+            const doc = await readDocument(
+              {
+                bytes: result.bytes,
+                contentType: result.contentType,
+                requestedUrl: args.url,
+                finalUrl: result.finalUrl,
+                status: result.status,
+                filename: null,
+              },
+              cfg,
+              { max_text_bytes: args.max_bytes },
+              [
+                ...notes,
+                `The server answered ${result.contentType || 'with a file'}, so this was read as a document ` +
+                  'rather than returned as raw bytes. ghost_document takes a page range and can use a ' +
+                  "session's cookies.",
+                ...(result.truncated
+                  ? ['The body was truncated at the byte cap before parsing, so the document may be incomplete.']
+                  : []),
+              ],
+            );
+            deps.recordRequest({
+              principal,
+              tool: 'ghost_curl',
+              url: args.url,
+              finalUrl: result.finalUrl,
+              status: result.status,
+              ok: true,
+              injectionFindings: doc.findings.length,
+              hiddenElements: doc.extract?.hidden.length ?? 0,
+              bytes: result.bodyBytes,
+            });
+            return { content: doc.content };
+          } catch (e) {
+            // A format this cannot read is not a reason for this tool to fail.
+            // It fetched the bytes; showing them is still the job.
+            if (!(e instanceof UnreadableDocument)) throw e;
+            notes.push(`This was fetched as a possible document, but ${e.message}`);
+          }
+        }
+
         if (result.contentType && !/text|json|xml|javascript|html/i.test(result.contentType)) {
           notes.push(
             `Content-Type is ${result.contentType}; the body below is that data decoded as UTF-8 and ` +
@@ -512,6 +900,26 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       }
     },
   );
+}
+
+/**
+ * What to say about a click that produced a file.
+ *
+ * Downloads are refused, so from the page's side nothing happened and the read
+ * that follows looks like a click that missed. Naming the URL turns that into
+ * the next call the caller should make.
+ */
+function downloadNotes(session: Session, since: number): string[] {
+  const attempts = session.downloads.slice(since);
+  if (attempts.length === 0) return [];
+  return [
+    `The page started ${attempts.length} download(s), which this relay refuses rather than writing ` +
+      'to disk. Read one with ghost_document: ' +
+      attempts
+        .slice(0, 5)
+        .map((d) => (d.filename ? `${d.url} (${d.filename})` : d.url))
+        .join(', '),
+  ];
 }
 
 function actionNotes(outcomes: Array<{ action: string; ok: boolean; detail: string }>): string[] {

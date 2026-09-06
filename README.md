@@ -28,7 +28,7 @@ like. Both are labelled as untrusted the whole way.
 
 ## What it does
 
-Six tools, split between the browser path and a plain HTTP one.
+Seven tools, split between the browser path and a plain HTTP one.
 
 - **`ghost_fetch`** — load a URL, read it, throw the browser away. One call,
   one page.
@@ -37,6 +37,7 @@ Six tools, split between the browser path and a plain HTTP one.
   several turns. Cookies and storage live inside the session and die with it.
 - **`ghost_sessions`** — what you have open, where each one is parked, and
   every host it has touched.
+- **`ghost_document`** — read a PDF, Word document, spreadsheet or deck.
 - **`ghost_curl`** — one GET or HEAD with Chrome-on-Windows headers and no
   browser at all. Right for JSON APIs, `robots.txt`, `llms.txt`, and for
   telling apart a block served at the HTTP layer from one drawn by a script.
@@ -50,6 +51,43 @@ it produces something useless: a 1280x8000 capture gets downscaled to fit a
 vision model's input budget and every line of body text turns to grey smear.
 Height is the enemy, so the capture is sliced and the number of tiles is
 capped.
+
+## Documents
+
+Half the links worth following are not pages. A URL that turns out to be a PDF
+loads into Chrome's PDF viewer, whose DOM is a single `<embed>` element, so
+reading it the usual way returns an empty page and a picture of a toolbar. A
+`.docx` link does not even navigate: Chrome answers it with a download, which
+this relay refuses, so the fetch aborts and nothing lands at all.
+
+So documents are read as documents.
+
+| | |
+| --- | --- |
+| PDF | page by page, with metadata and the outline |
+| `.docx` | headings, lists, tables, hyperlinks with their real targets, footnotes, endnotes and review comments |
+| `.xlsx` | one markdown table per sheet, hidden sheets included and labelled |
+| `.pptx` | slide by slide in presentation order, speaker notes included |
+| `.odt` `.ods` `.odp` | the OpenDocument equivalents of the three above |
+
+`ghost_document` does this directly and takes a page range, so a 400-page PDF
+is read in pieces rather than refused. `ghost_fetch`, `ghost_open` and
+`ghost_curl` route to the same reader on their own when a URL turns out to be
+one of these, and a click inside a session that produces a download reports the
+URL rather than looking like a click that missed. Pass `include_file` to get the
+raw bytes back as well, or instead, when the format is one this cannot read.
+
+Two things are worth knowing about the output. A spreadsheet's dates are stored
+as floating-point day counts, so a reader that skips the style table reports an
+invoice dated `45231`; this one parses enough of `xl/styles.xml` to render them
+as dates. And a PDF has no text in it, only instructions for placing glyphs, so
+what comes back is a reconstruction — pdf.js's, the same one Firefox ships —
+and column order in a complicated layout is inference rather than fact. A
+scanned PDF has nothing to reconstruct from and says so; there is no OCR here.
+
+Not read: pre-2007 Office files (`.doc`, `.xls`, `.ppt`), which are OLE
+compound documents rather than zipped XML, and RTF. Both are identified by name
+rather than mangled into gibberish.
 
 ## The part that matters
 
@@ -72,6 +110,16 @@ cleaning:
    styles in the live DOM, which is the only place the question can actually be
    answered, and they are listed above the content rather than silently
    dropped: that a page carried invisible instructions is itself the finding.
+
+   Documents get the same treatment through the same path, because they are
+   where this attack has actually been found: a paragraph of instructions in
+   white type, or in PDF rendering mode 3 which paints no glyphs at all, aimed
+   at whatever model is asked to summarise the file. A Word run marked
+   `w:vanish`, a spreadsheet cell in white on white, and a PDF paragraph drawn
+   invisibly all come out of the content and into the same report. Ordinary
+   structure — a collapsed menu, a filtered row, a hidden worksheet — is
+   counted and dropped rather than shouted about, because a warning that fires
+   on every third file is one nobody reads.
 
 3. **The payload sits inside a boundary carrying a nonce.** The nonce is minted
    in the server process after the page has already been read, so the page
@@ -115,7 +163,22 @@ stay off so Chrome can nest its own user namespace), are spelled out in
 
 Each session gets its own `BrowserContext`, destroyed when the session ends.
 Downloads are refused, service workers are blocked, permissions are denied, and
-dialogs are dismissed.
+dialogs are dismissed. Refusing downloads means nothing a page offers is ever
+written to this disk; the URL is kept and reported, so a file can still be
+fetched and read on purpose.
+
+Document parsing is the one piece of format handling that runs in the MCP
+process rather than in the browser account, and it runs in a worker thread with
+a heap ceiling and a wall-clock timeout. A thread is not the boundary a separate
+account is and is not claimed to be. It closes the failure that is actually
+likely from a crafted file, which is not code execution but a parse that never
+finishes or never stops allocating: a worker can be killed from outside while it
+is spinning, and a synchronous parse on the main thread cannot. Above that,
+every archive is opened with a budget — entry count, per-entry size, and total
+expansion — because a 40 KB `.docx` that inflates to 5 GB is a thing anyone can
+build. The XML underneath is read by a scanner that does not process a DTD at
+all, so external entities and entity expansion are not attack surface rather
+than being defended against.
 
 ## Where the requests go
 
@@ -151,6 +214,16 @@ Being straight about the limits is more useful than a list of features.
 - **`ghost_curl` sends Node's TLS handshake, not Chrome's.** No header will
   make a ClientHello agree with the User-Agent above it. Anything doing JA3 or
   JA4 fingerprinting sees Node. Use `ghost_fetch` for those.
+- **`ghost_document` does too.** Fetching a file through a session carries that
+  session's cookies and Chrome's headers, which is what a document behind a
+  login needs, but the request itself is made by Playwright's own HTTP client
+  and the handshake is Node's. The exception is a document Chrome already
+  navigated to, where the bytes it received are read back and nothing is
+  fetched a second time.
+- **A PDF's text is a reconstruction.** Reading order in a multi-column layout,
+  table structure, and anything carried only in an image are all inference or
+  absent. A scanned page has no text at all and is reported as such rather than
+  as an empty document.
 - **Font metrics still say Linux.** The identity is consistent across the
   user agent, client hints, `navigator.platform`, WebGL strings, screen
   dimensions and `navigator.webdriver`, and that covers ordinary bot heuristics.
@@ -219,6 +292,10 @@ terms and applicable law. Nothing in this document is legal advice.
   anyone reach for `--no-sandbox`.
 - The database holds auth plumbing and a request trail: who fetched what, when,
   and how many findings came back. No page content is ever written to it.
+- The MCP unit's `MemoryMax` is 1500M, which is `documents.parse_memory_mb`
+  times `documents.parse_concurrency` plus headroom for the main thread and the
+  file being read. Raising either of those without raising the unit's limit
+  gets the whole service killed rather than one parse abandoned.
 
 ## Install
 

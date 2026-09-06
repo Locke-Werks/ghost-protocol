@@ -61,6 +61,20 @@ export async function precheckUrl(raw: string, allowHosts: Set<string>): Promise
   return url;
 }
 
+/**
+ * Chrome answered the navigation with a file instead of a page.
+ *
+ * Downloads are refused, so the navigation aborts and nothing lands. The URL is
+ * carried here because the bytes are still fetchable, and for the formats this
+ * relay reads that is the difference between a dead end and a document.
+ */
+export class NavigationBecameDownload extends Error {
+  constructor(readonly url: string) {
+    super(`navigation to ${url} was answered with a download rather than a page`);
+    this.name = 'NavigationBecameDownload';
+  }
+}
+
 export async function navigate(
   session: Session,
   url: string,
@@ -69,6 +83,7 @@ export async function navigate(
 ): Promise<Response | null> {
   await precheckUrl(url, cfg.egress.allowHosts);
   session.navigations++;
+  const downloadsBefore = session.downloads.length;
   try {
     const response = await session.page.goto(url, {
       waitUntil,
@@ -87,7 +102,38 @@ export async function navigate(
           'Private and reserved addresses are never relayed.',
       );
     }
+    // ERR_ABORTED is what a refused download looks like from goto's side, and
+    // it is also what a page that cancels its own navigation looks like. The
+    // download event is what tells them apart, so it is checked rather than
+    // assumed: guessing wrong here would turn an ordinary navigation failure
+    // into a confusing "this is not a readable document".
+    if (/ERR_ABORTED/.test(msg)) {
+      const attempt = await waitForDownload(session, downloadsBefore, 1000);
+      if (attempt) throw new NavigationBecameDownload(attempt.url);
+    }
     throw new Error(`navigation to ${url} failed: ${msg}`);
+  }
+}
+
+/**
+ * Wait a moment for a download the navigation may have started.
+ *
+ * The failed navigation and the download notice are two protocol messages with
+ * no ordering between them, so the event has often not been dispatched yet when
+ * goto rejects. Polling briefly costs a second on the one path where a
+ * navigation genuinely aborted for some other reason, and is the difference
+ * between reading the file and reporting a dead end on the path that matters.
+ */
+async function waitForDownload(
+  session: Session,
+  since: number,
+  timeoutMs: number,
+): Promise<{ url: string } | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (session.downloads.length > since) return session.downloads[session.downloads.length - 1]!;
+    if (Date.now() >= deadline) return null;
+    await new Promise((r) => setTimeout(r, 50));
   }
 }
 
