@@ -4,8 +4,8 @@
 // boundary, not a convenience. In-page code needs the live DOM for two things
 // only: computed styles (deciding what a human can actually see) and the
 // Readability/Turndown conversion. Everything a hostile page would want to
-// suppress — the control-character strip, the injection scan, the size cap, the
-// envelope that labels the result as untrusted — runs here in Node, afterwards,
+// suppress (the control-character strip, the injection scan, the size cap, the
+// envelope that labels the result as untrusted) runs here in Node, afterwards,
 // on the returned string. A page can choose what text it hands us. It cannot
 // reach the code that decides how that text is labelled.
 

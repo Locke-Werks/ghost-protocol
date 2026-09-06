@@ -2,7 +2,7 @@
 //
 // Starts, in order: the database and its migrations, the egress guard proxy, the
 // browser connection, and finally the HTTP listener. The proxy comes up before
-// anything can navigate, deliberately — a window in which the browser is
+// anything can navigate, deliberately: a window in which the browser is
 // reachable but unguarded would be a window in which a fetch could reach
 // loopback.
 
@@ -63,8 +63,8 @@ async function main(): Promise<void> {
   }
 
   // The proxy mints its own credentials at construction and the runtime needs
-  // them, so the proxy is built first. The dependency in the other direction —
-  // the proxy attributing an egress event to a session — is late-bound through
+  // them, so the proxy is built first. The dependency in the other direction,
+  // the proxy attributing an egress event to a session, is late-bound through
   // this holder rather than by handing either object a half-built copy of the
   // other.
   let runtimeRef: BrowserRuntime | null = null;

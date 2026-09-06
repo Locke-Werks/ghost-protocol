@@ -5,8 +5,8 @@
 // stored as text. The three types differ only in what the body element is and
 // how the content inside it is grouped, so they share one walk.
 //
-// There is no hidden-text detection here. ODF can hide text — a paragraph style
-// with `fo:color` set to white, `text:display="none"` on a section — but the
+// There is no hidden-text detection here. ODF can hide text: a paragraph style
+// with `fo:color` set to white, `text:display="none"` on a section. But the
 // styles live in a separate part and resolving them means implementing style
 // inheritance, which is a lot of machinery for a format that is not where this
 // attack shows up in practice. The injection scan still runs over everything

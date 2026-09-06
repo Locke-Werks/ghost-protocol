@@ -7,7 +7,7 @@
 //
 // The first is free: the navigation already happened, so the response Chrome
 // received is still there to be read. The second is a request made through the
-// session's own context, which matters more than it sounds — it carries the
+// session's own context, which matters more than it sounds: it carries the
 // cookies the session has collected, so a document behind a login is reachable
 // on exactly the terms the pages before it were. Both leave through the same
 // forward proxy as everything else, so the egress guard sees them.
@@ -55,8 +55,8 @@ export interface BytesOptions {
 /**
  * The body of a navigation Chrome already made.
  *
- * Free when it works, and not always available — a response whose body Chrome
- * has evicted, or that never completed, throws — so the caller falls back.
+ * Free when it works, and not always available: a response whose body Chrome
+ * has evicted, or that never completed, throws, so the caller falls back.
  */
 export async function bytesFromResponse(response: Response, maxBytes: number): Promise<Buffer | null> {
   const declared = Number(response.headers()['content-length'] ?? NaN);

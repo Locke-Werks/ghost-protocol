@@ -1,8 +1,8 @@
 // The path a document takes from bytes to a tool result.
 //
-// Four tools can end up here — a fetch that landed on a PDF, a navigation
+// Four tools can end up here: a fetch that landed on a PDF, a navigation
 // Chrome answered with a download, ghost_document asked directly, and
-// ghost_curl handed something that is not text — so the parse, the size rules
+// ghost_curl handed something that is not text. So the parse, the size rules
 // and the wording all live in one place rather than being written four times
 // and drifting apart.
 

@@ -7,7 +7,7 @@
 // widely exercised against real files.
 //
 // Two things are asked of it here rather than one. The first is the text. The
-// second is which of that text was drawn so it could not be read — invisible
+// second is which of that text was drawn so it could not be read: invisible
 // text rendering mode, or glyphs painted white on a page with nothing behind
 // them. That is not an exotic concern for this format: hiding a paragraph of
 // instructions in a PDF, aimed at whatever model would be asked to summarise
@@ -284,7 +284,7 @@ function withoutConcealed(text: string, concealed: Concealed[]): string {
 /**
  * Text on this page that was drawn so it could not be read.
  *
- * Two shapes count. Rendering mode 3 paints no glyphs at all — the text is in
+ * Two shapes count. Rendering mode 3 paints no glyphs at all: the text is in
  * the file and on no screen. A near-white fill is the same trick done in
  * colour. Both are ordinary on a scanned page, where an OCR layer sits
  * invisibly under the image of the paper, so a page carrying any image is left

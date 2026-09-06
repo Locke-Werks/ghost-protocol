@@ -1,7 +1,7 @@
 // A scanner, not a parser.
 //
-// Office XML is machine-written and deeply nested — a paragraph of Word is a
-// dozen elements — so what the extractors need is a stream of open, close and
+// Office XML is machine-written and deeply nested, a paragraph of Word being a
+// dozen elements, so what the extractors need is a stream of open, close and
 // text events they can drive a small state machine from, not a tree they would
 // have to walk twice and hold in memory whole.
 //

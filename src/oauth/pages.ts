@@ -60,7 +60,7 @@ export function renderLogin(req: AuthorizeRequest, errorMessage: string): string
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Ghost Protocol — sign in</title>
+<title>Ghost Protocol: sign in</title>
 <style>${STYLE}</style></head><body>
 <form method="post" action="/oauth/authorize" autocomplete="off">
 <h1>Ghost Protocol</h1>
@@ -83,7 +83,7 @@ export function renderError(title: string, detail: string): string {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Ghost Protocol — error</title>
+<title>Ghost Protocol: error</title>
 <style>${STYLE}</style></head><body>
 <main><h1>${htmlEscape(title)}</h1><p>${htmlEscape(detail)}</p></main>
 </body></html>

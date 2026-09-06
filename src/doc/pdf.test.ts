@@ -3,8 +3,8 @@
 //
 // The fixture is a PDF written out by hand rather than produced by a library.
 // It is small enough to read in the source, and the thing under test is exactly
-// the content-stream operators it contains — `Tr 3` for invisible text, `rg`
-// for a white fill — which a generator would hide behind an abstraction.
+// the content-stream operators it contains (`Tr 3` for invisible text, `rg`
+// for a white fill), which a generator would hide behind an abstraction.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

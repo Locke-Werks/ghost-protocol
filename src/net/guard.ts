@@ -1,5 +1,5 @@
-// Address classification for egress. Every outbound connection the relay makes
-// — browser or plain HTTP — is checked here first.
+// Address classification for egress. Every outbound connection the relay makes,
+// browser or plain HTTP, is checked here first.
 //
 // This is the control that keeps a public "fetch any URL you name" endpoint
 // from becoming a way into whatever else the host can reach: databases and
@@ -58,7 +58,7 @@ export function addDeniedAddress(addr: string): void {
 }
 
 // An IPv4-mapped IPv6 literal (::ffff:127.0.0.1) is an IPv4 address wearing a
-// costume. BlockList's ipv6 check does not see through it, so unwrap first —
+// costume. BlockList's ipv6 check does not see through it, so unwrap first:
 // this is the classic way a v4-only denylist gets walked past.
 function unwrapMapped(addr: string): string {
   const m = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(addr);

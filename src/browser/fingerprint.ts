@@ -174,7 +174,7 @@ export const INIT_SCRIPT = String.raw`
   }
 
   // Notification.permission reads "denied" in headless while the Permissions
-  // API reports "prompt" — a contradiction no real browser produces.
+  // API reports "prompt", a contradiction no real browser produces.
   if (self.Notification && Notification.permission === 'denied') {
     def(Notification, 'permission', 'default');
   }

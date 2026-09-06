@@ -257,7 +257,7 @@ export async function readPage(
   if (opts.screenshot === 'full') await primeLazyContent(page);
 
   // Screenshot first, and the order is load-bearing. Extraction strips the live
-  // DOM — every <style> and stylesheet <link> among them — so a capture taken
+  // DOM, every <style> and stylesheet <link> among them, so a capture taken
   // afterwards would be a picture of unstyled HTML rather than of the page.
   //
   // The two halves therefore describe the page at the same moment but not the

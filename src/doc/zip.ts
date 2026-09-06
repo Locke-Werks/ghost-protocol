@@ -7,10 +7,10 @@
 // ZIP is the classic way to turn a 40 KB download into a 5 GB heap.
 //
 // So nothing is inflated speculatively. Entries are located from the central
-// directory, decompressed one at a time, and every one of them is bounded twice
-// — once against the size the header claims, and once against the bytes zlib
-// actually produces, because the header is written by the same person as the
-// payload.
+// directory, decompressed one at a time, and every one of them is bounded
+// twice: once against the size the header claims, and once against the bytes
+// zlib actually produces, because the header is written by the same person as
+// the payload.
 
 import { inflateRawSync } from 'node:zlib';
 

@@ -3,8 +3,8 @@
 // Everywhere else in this server, the process that handles attacker-controlled
 // input is separated from the process that holds anything worth taking: Chrome
 // renders pages under its own account, in its own unit. A document parser is
-// the same kind of code — thousands of lines of format handling, driven
-// entirely by bytes a stranger chose — but it runs in the MCP process, next to
+// the same kind of code, thousands of lines of format handling driven entirely
+// by bytes a stranger chose, but it runs in the MCP process, next to
 // the database credential and the OAuth signing key.
 //
 // A thread is not the boundary a separate account is, and it is not claimed to
@@ -12,7 +12,7 @@
 // closes the failure that is actually likely, which is not code execution but a
 // parse that never finishes or never stops allocating. A worker can be given a
 // heap ceiling and can be terminated from outside while it is spinning, neither
-// of which is true of a synchronous parse on the main thread — there, one
+// of which is true of a synchronous parse on the main thread: there, one
 // crafted file stops the whole server answering.
 
 import { parentPort, workerData } from 'node:worker_threads';

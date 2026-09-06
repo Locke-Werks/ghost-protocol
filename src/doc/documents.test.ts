@@ -1,8 +1,8 @@
 // Document reading, end to end from bytes.
 //
 // The fixtures are built here rather than checked in as binaries, because what
-// is being tested is the handling of specific structures — a hidden run, a date
-// format, a slide order that disagrees with the filenames — and a fixture whose
+// is being tested is the handling of specific structures (a hidden run, a date
+// format, a slide order that disagrees with the filenames) and a fixture whose
 // contents are visible in the assertion is worth more than a .docx nobody can
 // read in a diff.
 

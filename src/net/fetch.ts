@@ -1,7 +1,7 @@
 // A plain HTTP request with no browser attached: what the page's server sends
 // before any JavaScript touches it.
 //
-// This is the cheap path and it is genuinely useful — JSON APIs, robots.txt,
+// This is the cheap path and it is genuinely useful: JSON APIs, robots.txt,
 // llms.txt, a raw markdown file, checking whether a block is served at the HTTP
 // layer or drawn by a script. It is not a substitute for the browser path
 // against anything that fingerprints the TLS handshake: these bytes come from
@@ -31,7 +31,7 @@ export interface FetchOptions {
    * A larger cap for a body that is not text.
    *
    * A PDF has no business being measured against the same limit as a page of
-   * markdown, and the two cannot be told apart before the request is made — the
+   * markdown, and the two cannot be told apart before the request is made: the
    * Content-Type arrives with the headers, ahead of the body, which is late
    * enough to choose a cap and early enough to still enforce one.
    */

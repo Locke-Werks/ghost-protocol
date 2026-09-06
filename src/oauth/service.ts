@@ -7,7 +7,7 @@
 //
 // One status rule runs through all of it, and it is not cosmetic. Bad login
 // credentials answer 401, because the fail2ban jail counts those lines. Grant
-// failures at the token endpoint — an expired code, a stale refresh token —
+// failures at the token endpoint (an expired code, a stale refresh token)
 // answer 400 and never 401, because a connector backend retrying a dead token
 // would otherwise accumulate toward an IP ban and lock out the legitimate user.
 
@@ -408,7 +408,7 @@ export class OAuthService {
     // Claim and validate in one statement. Every condition the exchange has to
     // satisfy is in the WHERE clause, so a row coming back means the code was
     // unclaimed, unexpired, and matched this client, this redirect_uri and this
-    // PKCE verifier — and that this call is the one that claimed it. Two
+    // PKCE verifier, and that this call is the one that claimed it. Two
     // concurrent exchanges cannot both match `used_at IS NULL`.
     //
     // Putting the PKCE check inside the claim rather than after it is the point.

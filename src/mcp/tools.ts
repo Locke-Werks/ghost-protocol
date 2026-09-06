@@ -2,7 +2,7 @@
 //
 // Every description below tells the calling model two things: what the tool
 // does, and that what comes back is untrusted. Saying it here matters as much
-// as saying it in the result — a tool list is read once, before any content
+// as saying it in the result: a tool list is read once, before any content
 // arrives, when there is nothing in the context yet arguing otherwise.
 
 import { z } from 'zod';
@@ -584,8 +584,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         'Reads: PDF, .docx, .xlsx, .pptx, and the OpenDocument equivalents (.odt, .ods, .odp). ' +
         'A PDF comes back page by page; a workbook as one table per sheet, with dates rendered as ' +
         'dates rather than as the day counts they are stored as; a deck slide by slide, speaker ' +
-        'notes included. Text a document hid — a Word run marked vanish, a white cell, a PDF ' +
-        'paragraph drawn in invisible rendering mode — is pulled out and reported separately ' +
+        'notes included. Text a document hid, whether a Word run marked vanish, a white cell, or ' +
+        'a PDF paragraph drawn in invisible rendering mode, is pulled out and reported separately ' +
         'rather than mixed into the content.\n\n' +
         `Large files are read in pieces: ${cfg.documents.maxSections} pages, sheets or slides at a ` +
         'time, so ask for the next range with first_page and last_page. The total is always ' +

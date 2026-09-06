@@ -14,7 +14,7 @@ import { setLevel } from './util/log.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const USAGE = `ghost-cli — Ghost Protocol operator commands
+const USAGE = `ghost-cli: Ghost Protocol operator commands
 
   passwd <principal>            set or replace a login password
   oauth keygen <path>           write a new ES256 signing key (refuses to overwrite)

@@ -150,8 +150,8 @@ function readSharedStrings(zip: Zip): string[] {
  * Just enough of `xl/styles.xml` to know a date from a number.
  *
  * Only two questions get asked of it: does this cell's format make its number a
- * date, and is its font white. Everything else in the part — borders, fills,
- * alignment — is presentation this reader has no use for.
+ * date, and is its font white. Everything else in the part (borders, fills,
+ * alignment) is presentation this reader has no use for.
  */
 function readStyles(zip: Zip): Styles {
   const xml = zip.readTextIfPresent('xl/styles.xml');

@@ -6,10 +6,10 @@
 // sitting third. So the order comes from `ppt/presentation.xml`, with the
 // filenames as a fallback for a deck that has lost its relationships.
 //
-// Speaker notes come along, labelled. They are not concealment — an audience
-// was never meant to read them — but they are exactly where the substance of a
-// deck often lives, and dropping them silently is how a summary ends up being
-// six words per slide.
+// Speaker notes come along, labelled. They are not concealment, since an
+// audience was never meant to read them, but they are exactly where the
+// substance of a deck often lives, and dropping them silently is how a summary
+// ends up being six words per slide.
 
 import { Zip } from './zip.js';
 import { localName, scanXml } from './xml.js';
@@ -126,8 +126,8 @@ function slideNumber(part: string): number {
 /**
  * One slide's shapes to markdown.
  *
- * DrawingML nests text three deep — a shape holds a text body, which holds
- * paragraphs, which hold runs — and the only things worth keeping from that are
+ * DrawingML nests text three deep: a shape holds a text body, which holds
+ * paragraphs, which hold runs. The only things worth keeping from that are
  * where a paragraph ends, whether the shape is the title placeholder, and
  * whether a run was drawn in a colour nobody could read.
  */
@@ -160,7 +160,7 @@ function renderSlide(xml: string, where: string, hidden: DocHidden[]): string {
     const text = shapeLines.filter(Boolean);
     shapeLines = [];
     if (text.length === 0) return;
-    if (shapeIsTitle) blocks.push('### ' + text.join(' — '));
+    if (shapeIsTitle) blocks.push('### ' + text.join(' / '));
     else blocks.push(text.join('\n'));
     shapeIsTitle = false;
   };

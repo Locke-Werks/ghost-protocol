@@ -143,4 +143,4 @@ log "Pruning old releases (keeping $KEEP_RELEASES)"
   done
   echo \"  releases kept: \$(ls -1d */ | wc -l)\""
 
-log "Deployed $SHA${VHOST:+ — https://$VHOST/mcp}"
+log "Deployed $SHA${VHOST:+ at https://$VHOST/mcp}"

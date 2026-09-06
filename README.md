@@ -30,15 +30,15 @@ like. Both are labelled as untrusted the whole way.
 
 Seven tools, split between the browser path and a plain HTTP one.
 
-- **`ghost_fetch`** — load a URL, read it, throw the browser away. One call,
+- **`ghost_fetch`**: load a URL, read it, throw the browser away. One call,
   one page.
-- **`ghost_open`** / **`ghost_act`** / **`ghost_close`** — the same thing, but
+- **`ghost_open`** / **`ghost_act`** / **`ghost_close`**: the same thing, but
   the browser stays open so an agent can click through a docs set across
   several turns. Cookies and storage live inside the session and die with it.
-- **`ghost_sessions`** — what you have open, where each one is parked, and
+- **`ghost_sessions`**: what you have open, where each one is parked, and
   every host it has touched.
-- **`ghost_document`** — read a PDF, Word document, spreadsheet or deck.
-- **`ghost_curl`** — one GET or HEAD with Chrome-on-Windows headers and no
+- **`ghost_document`**: read a PDF, Word document, spreadsheet or deck.
+- **`ghost_curl`**: one GET or HEAD with Chrome-on-Windows headers and no
   browser at all. Right for JSON APIs, `robots.txt`, `llms.txt`, and for
   telling apart a block served at the HTTP layer from one drawn by a script.
 
@@ -81,8 +81,8 @@ Two things are worth knowing about the output. A spreadsheet's dates are stored
 as floating-point day counts, so a reader that skips the style table reports an
 invoice dated `45231`; this one parses enough of `xl/styles.xml` to render them
 as dates. And a PDF has no text in it, only instructions for placing glyphs, so
-what comes back is a reconstruction — pdf.js's, the same one Firefox ships —
-and column order in a complicated layout is inference rather than fact. A
+what comes back is a reconstruction: pdf.js's, the same one Firefox ships.
+Column order in a complicated layout is inference rather than fact. A
 scanned PDF has nothing to reconstruct from and says so; there is no OCR here.
 
 Not read: pre-2007 Office files (`.doc`, `.xls`, `.ppt`), which are OLE
@@ -117,7 +117,7 @@ cleaning:
    at whatever model is asked to summarise the file. A Word run marked
    `w:vanish`, a spreadsheet cell in white on white, and a PDF paragraph drawn
    invisibly all come out of the content and into the same report. Ordinary
-   structure — a collapsed menu, a filtered row, a hidden worksheet — is
+   structure (a collapsed menu, a filtered row, a hidden worksheet) is
    counted and dropped rather than shouted about, because a warning that fires
    on every third file is one nobody reads.
 
@@ -137,8 +137,8 @@ attack has to survive being fetched.
 
 The split between what runs in the page and what runs in the server is a
 boundary, not a convenience. In-page code gets the DOM work, because it needs
-computed styles. Everything a hostile page would want to suppress — the
-character strip, the scan, the cap, the envelope — runs afterwards, in Node, on
+computed styles. Everything a hostile page would want to suppress (the
+character strip, the scan, the cap, the envelope) runs afterwards, in Node, on
 the returned string. A page can choose what text it hands over. It cannot reach
 the code that decides how that text is labelled.
 
@@ -174,8 +174,8 @@ account is and is not claimed to be. It closes the failure that is actually
 likely from a crafted file, which is not code execution but a parse that never
 finishes or never stops allocating: a worker can be killed from outside while it
 is spinning, and a synchronous parse on the main thread cannot. Above that,
-every archive is opened with a budget — entry count, per-entry size, and total
-expansion — because a 40 KB `.docx` that inflates to 5 GB is a thing anyone can
+every archive is opened with a budget on entry count, per-entry size and total
+expansion, because a 40 KB `.docx` that inflates to 5 GB is a thing anyone can
 build. The XML underneath is read by a scanner that does not process a DTD at
 all, so external entities and entity expansion are not attack surface rather
 than being defended against.
@@ -187,7 +187,7 @@ something stops it. Whatever else the host can reach, it can reach: databases
 and admin APIs bound to loopback, an overlay network interface onto a private
 network, a cloud metadata service.
 
-Every outbound connection — the browser's and `ghost_curl`'s alike — goes
+Every outbound connection, the browser's and `ghost_curl`'s alike, goes
 through a forward proxy in the MCP process. Chrome resolves nothing itself: it
 sends `CONNECT host:port` and the proxy does the lookup, checks **every** address
 the name answers with against the reserved and private ranges, and then dials

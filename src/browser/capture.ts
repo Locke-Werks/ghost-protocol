@@ -1,6 +1,6 @@
 // Screenshots an agent can actually read.
 //
-// The obvious implementation — one full-page PNG — produces something useless
+// The obvious implementation, one full-page PNG, produces something useless
 // on the far end. A documentation page is routinely 8000 pixels tall, and a
 // 1280x8000 image gets downscaled to fit a vision model's input budget, at
 // which point every line of body text is a grey smear. Height is the enemy, not

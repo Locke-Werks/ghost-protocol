@@ -126,8 +126,8 @@ export function mediaTypeFor(kind: DocKind): string {
 /**
  * Whether a Content-Type is worth routing to the document reader.
  *
- * This runs before the bytes are in hand — it decides whether to go and get
- * them — so it is the one place a header does get believed. Being wrong here
+ * This runs before the bytes are in hand, since it decides whether to go and
+ * get them, so it is the one place a header does get believed. Being wrong here
  * costs a wasted fetch, and the bytes still have the last word.
  */
 export function looksLikeDocument(contentType: string, url: string): boolean {
