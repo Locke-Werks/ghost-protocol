@@ -14,6 +14,10 @@
 
 ---
 
+[![Ghost Protocol demo](https://img.youtube.com/vi/8_JeRCj1EbQ/maxresdefault.jpg)](https://www.youtube.com/watch?v=8_JeRCj1EbQ)
+
+*Demo: an MCP browsing relay for pages that turn Claude away (1:27)*
+
 An MCP server that browses on an agent's behalf.
 
 You ask Claude to read a page. The site checks the user agent, sees `ClaudeBot`,
