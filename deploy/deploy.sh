@@ -93,6 +93,12 @@ log "Installing dependencies and building"
 log "Opening read access for the browser account"
 "${SSH[@]}" "sudo -n -u $APP_USER chmod -R a+rX '$REL'"
 
+log "Running the change-control review"
+# The box's own gate, run while the old release is still the live one. It exits
+# 1 on anything from the never-accepted list, and nothing is flipped after that.
+"${SSH[@]}" "/srv/change-control/bin/review $APP '$REL'" \
+  || fail "bin/review blocked the deploy; nothing was flipped"
+
 log "Flipping symlink and restarting"
 # readlink WITHOUT -f: it prints a target only when the path really is a
 # symlink, and nothing otherwise. `readlink -f` resolves a path that does not
