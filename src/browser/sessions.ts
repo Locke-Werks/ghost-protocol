@@ -40,6 +40,8 @@ export interface Session {
   /** Hosts this session reached, allowed or refused. */
   egress: EgressEvent[];
   navigations: number;
+  /** What the last navigation has to say about how far the page got. */
+  navNotes: string[];
 }
 
 export class SessionLimit extends Error {}
@@ -179,6 +181,7 @@ export class BrowserRuntime {
       title: '',
       egress: [],
       navigations: 0,
+      navNotes: [],
     };
     this.sessions.set(session.id, session);
     log.info('session opened', { session: session.id, principal, total: this.sessions.size });

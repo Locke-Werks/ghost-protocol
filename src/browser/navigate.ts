@@ -69,12 +69,27 @@ export async function navigate(
 ): Promise<Response | null> {
   await precheckUrl(url, cfg.egress.allowHosts);
   session.navigations++;
+  session.navNotes = [];
   try {
+    // The document is waited for in full; `load` and `networkidle` are not.
+    // An ad-funded page keeps a request open long after its article has
+    // rendered, so `load` can fail to fire at all, and waiting for it turned a
+    // readable page into a timeout with nothing to show. A person at a browser
+    // reads what is there, and so does this.
     const response = await session.page.goto(url, {
-      waitUntil,
+      waitUntil: 'domcontentloaded',
       timeout: cfg.browser.navigationTimeoutMs,
     });
     session.currentUrl = session.page.url();
+    if (waitUntil !== 'domcontentloaded') {
+      await session.page.waitForLoadState(waitUntil, { timeout: cfg.browser.loadGraceMs }).catch(() => {
+        session.navNotes.push(
+          `The page had not reached "${waitUntil}" ${Math.round(cfg.browser.loadGraceMs / 1000)}s after its ` +
+            'document loaded, so it was read as rendered at that point. Content a script adds later may be missing.',
+        );
+      });
+      session.currentUrl = session.page.url();
+    }
     return response;
   } catch (e) {
     if (e instanceof EgressDenied) throw e;

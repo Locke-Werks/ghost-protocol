@@ -34,6 +34,8 @@ export interface Config {
     viewportHeight: number;
     userAgent: string | null;
     navigationTimeoutMs: number;
+    /** How long past the document to wait for `load` or `networkidle` before reading anyway. */
+    loadGraceMs: number;
   };
   egress: {
     proxyHost: string;
@@ -148,6 +150,7 @@ export function loadConfig(path: string): Config {
       viewportHeight: num(browserRaw.viewport_height, 800),
       userAgent: typeof browserRaw.user_agent === 'string' ? browserRaw.user_agent : null,
       navigationTimeoutMs: num(browserRaw.navigation_timeout_ms, 45_000),
+      loadGraceMs: num(browserRaw.load_grace_ms, 10_000),
     },
     egress: {
       proxyHost: proxyBind.host,

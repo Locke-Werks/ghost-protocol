@@ -23,6 +23,10 @@ timezone        = "America/Chicago"
 viewport_width  = 1280
 viewport_height = 800
 navigation_timeout_ms = 45000
+# After the document itself has loaded, how long to wait for the requested
+# `load` or `networkidle` before reading the page as it stands. Pages that keep
+# an ad request open never fire `load`; they are read, with a note, not failed.
+load_grace_ms = 10000
 
 # Leave unset. The user agent is built from the Chrome actually running, so an
 # unattended Chrome upgrade cannot leave a stale version in the header while the
