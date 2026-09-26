@@ -353,7 +353,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           format: args.format as TextFormat,
           maxTextBytes: args.max_text_bytes ?? cfg.capture.maxTextBytes,
           includeLinks: args.include_links,
-          notes: actionNotes(actionOutcomes),
+          notes: [...session.navNotes, ...actionNotes(actionOutcomes)],
         });
         logRead(principal, args.url, read.finalUrl, findings.length, read.extract.hidden.length);
         deps.recordRequest({
@@ -472,7 +472,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           format: args.format as TextFormat,
           maxTextBytes: args.max_text_bytes ?? cfg.capture.maxTextBytes,
           includeLinks: args.include_links,
-          notes: [],
+          notes: [...session.navNotes],
           sessionId: session.id,
         });
         logRead(principal, args.url, read.finalUrl, findings.length, read.extract.hidden.length);

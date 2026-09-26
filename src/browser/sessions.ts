@@ -53,6 +53,8 @@ export interface Session {
    * reported as one and read with ghost_document.
    */
   downloads: DownloadAttempt[];
+  /** What the last navigation has to say about how far the page got. */
+  navNotes: string[];
 }
 
 export class SessionLimit extends Error {}
@@ -193,6 +195,7 @@ export class BrowserRuntime {
       egress: [],
       navigations: 0,
       downloads: [],
+      navNotes: [],
     };
     trackDownloads(page, session);
     this.sessions.set(session.id, session);
