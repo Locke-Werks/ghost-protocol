@@ -64,7 +64,11 @@ log "Uploading source"
 # Runs as $APP_USER rather than root: the tree is owned by that account, so
 # creating, extracting into and removing release directories are ordinary file
 # operations for it, and files it extracts already belong to it.
-git archive --format=tar HEAD | "${SSH[@]}" "set -e
+#
+# deploy/ stays behind. The service never reads it (root installs the units and
+# the vhost from it at provision time), and provision.sh writes a DATABASE_URL
+# template that bin/review rightly cannot tell from a committed credential.
+git archive --format=tar HEAD -- . ':(exclude)deploy' | "${SSH[@]}" "set -e
   sudo -n -u $APP_USER mkdir -p '$REL'
   sudo -n -u $APP_USER chmod 0755 '$REL'
   sudo -n -u $APP_USER tar -x -C '$REL'"
