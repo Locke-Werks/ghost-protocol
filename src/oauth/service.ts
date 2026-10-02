@@ -81,6 +81,50 @@ export function hostAllowed(host: string, allow: string[]): boolean {
   return allow.some((a) => host === a || host.endsWith('.' + a));
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
+
+/**
+ * Split an RFC 8252 loopback redirect into host and path-plus-query, or null.
+ *
+ * Parsed by hand rather than with URL, because URL normalises: it turns
+ * `127.1` and `0x7f.1` into `127.0.0.1` and drops a default port, and the rule
+ * here is about the string the client registered, not what it resolves to.
+ */
+function parseLoopback(uri: string): { host: string; rest: string } | null {
+  const scheme = 'http://';
+  if (!uri.startsWith(scheme) || uri.includes('#')) return null;
+  const tail = uri.slice(scheme.length);
+  const cut = tail.search(/[/?]/);
+  const authority = cut === -1 ? tail : tail.slice(0, cut);
+  const m = /^(\[[^\]]*\]|[^:@[\]]*)(?::(\d{1,5}))?$/.exec(authority);
+  if (!m) return null;
+  if (m[2] !== undefined && Number(m[2]) > 65535) return null;
+  const host = (m[1] ?? '').toLowerCase();
+  if (!LOOPBACK_HOSTS.has(host)) return null;
+  return { host, rest: cut === -1 ? '' : tail.slice(cut) };
+}
+
+/**
+ * http to 127.0.0.1, [::1] or localhost, any port, no credentials or fragment.
+ * Accepted at registration regardless of the redirect-host allowlist.
+ */
+export function isLoopbackRedirect(uri: string): boolean {
+  return parseLoopback(uri) !== null;
+}
+
+/**
+ * Whether a redirect_uri presented at authorize matches a registered one.
+ * Exact, except that two loopback URIs match when host, path and query agree
+ * and only the port differs: RFC 8252 §7.3 has the native app bind whatever
+ * port is free at sign-in time.
+ */
+export function redirectMatches(registered: string, presented: string): boolean {
+  if (registered === presented) return true;
+  const r = parseLoopback(registered);
+  const p = parseLoopback(presented);
+  return r !== null && p !== null && r.host === p.host && r.rest === p.rest;
+}
+
 export class OAuthService {
   // Keyed by principal: slows a guess against one account.
   private readonly loginFails = new SlidingWindow(8, 15 * 60_000);
@@ -157,12 +201,21 @@ export class OAuthService {
       if (typeof raw !== 'string' || raw.length > 2048) {
         return { httpStatus: 400, error: 'invalid_redirect_uri', description: 'redirect_uris must be strings' };
       }
+      // A native app can only receive the code on a local listener, and a code
+      // sent there reaches nothing but a process on the signing-in user's own
+      // machine. The allowlist exists to keep codes off third-party web
+      // servers, so it does not apply.
+      if (isLoopbackRedirect(raw)) {
+        clean.push(raw);
+        continue;
+      }
       const host = httpsHostOf(raw);
       if (!host) {
         return {
           httpStatus: 400,
           error: 'invalid_redirect_uri',
-          description: 'every redirect_uri must be an https URL without embedded credentials',
+          description:
+            'every redirect_uri must be an https URL, or an http loopback URL, without embedded credentials',
         };
       }
       if (!hostAllowed(host, this.cfg.redirectHosts)) {
@@ -245,7 +298,7 @@ export class OAuthService {
     // (RFC 6749 §4.1.2.1).
     if (!client) return fail('invalid_client', 'unknown client_id');
     if (!req.redirectUri) return fail('invalid_request', 'redirect_uri is required');
-    if (!client.redirect_uris.includes(req.redirectUri)) {
+    if (!client.redirect_uris.some((registered) => redirectMatches(registered, req.redirectUri))) {
       return fail('invalid_request', 'redirect_uri does not match this client registration');
     }
 
@@ -420,6 +473,10 @@ export class OAuthService {
     // Comparing the challenge in SQL rather than with timingSafeEqual is fine:
     // the challenge is public by construction, since the client sends it in the
     // authorize request. The verifier is the secret, and it is never stored.
+    //
+    // The redirect_uri comparison stays exact for loopback clients too: the
+    // stored value is the URI this flow's authorize request used, port and all,
+    // which already passed the port-flexible check against the registration.
     const claimed = await this.db<
       Array<{
         principal: string;
