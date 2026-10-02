@@ -93,7 +93,10 @@ auth_code_ttl_s     = 600
 refresh_token_ttl_s = 2592000
 
 # Registration refuses a redirect_uri outside these hosts, which is what stops
-# an open registration endpoint from becoming an open redirector.
+# an open registration endpoint from becoming an open redirector. These govern
+# https redirects. An http redirect to 127.0.0.1, [::1] or localhost, any port,
+# is always accepted (RFC 8252): native apps can only take the code on a local
+# listener, and a code sent there never leaves the signing-in user's machine.
 redirect_hosts = ["claude.ai", "claude.com", "chatgpt.com", "openai.com"]
 max_clients    = 50
 
